@@ -11,7 +11,7 @@ from io import BytesIO
 # --- Setup Sarvam.ai function that can be reused across pages ---
 def get_sarvam_api_key():
     # Hardcoded API key for now (prototype/demo). Do not commit this in production.
-    api_key = "YOUR_SARVAM_API_KEY_HERE"
+    api_key = "sk_uhrvcva3_pZ0k0z4OYCqhkm7TJ0vCYi0i"
     return api_key
 
 # --- Correct model names ---
