@@ -1,18 +1,60 @@
+import os
 import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
-import google.generativeai as genai
+import requests
 import cv2
 import numpy as np
 import time
 from io import BytesIO
 
-# --- Setup Gemini AI function that can be reused across pages ---
-def setup_gemini():
-    API_KEY = "Your api key"  
-    genai.configure(api_key=API_KEY) 
-    model = genai.GenerativeModel("gemini-1.5-flash")  # Using Flash model
-    return model
+# --- Setup Sarvam.ai function that can be reused across pages ---
+def get_sarvam_api_key():
+    # Hardcoded API key for now (prototype/demo). Do not commit this in production.
+    api_key = "sk_uhrvcva3_pZ0k0z4OYCqhkm7TJ0vCYi0i"
+    return api_key
+
+# --- Correct model names ---
+DEFAULT_SARVAM_TEXT_MODEL = "sarvam-m"   # or "sarvam-30b" / "sarvam-105b"
+DEFAULT_SARVAM_IMAGE_MODEL = "sarvam-m"  # Sarvam has no dedicated image model via API yet
+
+def call_sarvam(prompt, model=DEFAULT_SARVAM_TEXT_MODEL):
+    api_key = get_sarvam_api_key()
+
+    headers = {
+        "api-subscription-key": api_key,   # ✅ Correct auth header
+        "Content-Type": "application/json",
+    }
+
+    # ✅ Correct payload format: messages array
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 350,
+        "temperature": 0.7,
+    }
+
+    url = "https://api.sarvam.ai/v1/chat/completions"  # ✅ Single correct endpoint
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+
+        # ✅ Standard OpenAI-style response parsing
+        content = data["choices"][0]["message"]["content"]
+        # Strip <think> tags if present
+        import re
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+        return content
+
+    except requests.HTTPError as e:
+        raise RuntimeError(f"Sarvam API error {response.status_code}: {response.text}") from e
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error calling Sarvam API: {e}") from e
+
 
 # --- Model Loader Function ---
 def load_model_for_cancer(cancer_type):
@@ -109,9 +151,7 @@ def cancer_analysis_page():
     st.title("Cancer Scan Analysis")
     st.subheader("Select Cancer Type for AI-Based Analysis")
 
-    # Initialize Gemini AI model for summarization
-    gemini_model = setup_gemini()
-
+    # No explicit model object needed; Sarvam.ai is called via HTTP wrapper
     cancer_type = st.selectbox("Select Cancer Type:", ["None", "Breast Cancer", "Brain Tumor", "Axial"])
 
     if 'cancer_submit' not in st.session_state:
@@ -214,7 +254,7 @@ def cancer_analysis_page():
                         image.save(img_byte_arr, format=image.format)
                         img_bytes = img_byte_arr.getvalue()
                         
-                        # Create a prompt for Gemini to analyze both the image and detection results
+                        # Create a prompt for Sarvam.ai to analyze both the image and detection results
                         prompt = f"""
                         This is a medical scan for {cancer_type}. 
                         
@@ -226,14 +266,11 @@ def cancer_analysis_page():
                         Keep your explanation concise and reassuring.
                         """
                         
-                        # Get simplified explanation from Gemini
-                        response = gemini_model.generate_content([
-                            prompt,
-                            {"mime_type": f"image/{image.format.lower()}", "data": img_bytes}
-                        ])
-                        
+                        # Get simplified explanation from Sarvam.ai
+                        response_text = call_sarvam(prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
+                                                
                         st.subheader("Simplified Explanation")
-                        st.info(response.text)
+                        st.info(response_text)
                     except Exception as e:
                         st.error(f"Error generating simplified explanation: {e}")
             else:
@@ -246,9 +283,7 @@ def fracture_analysis_page():
     st.title("Fracture Scan Analysis")
     st.subheader("Select Fracture Type for Further Information")
 
-    # Initialize Gemini AI model for summarization
-    gemini_model = setup_gemini()
-
+    # No explicit model object needed; Sarvam.ai is called via HTTP wrapper
     fracture_type = st.selectbox("Select Fracture Type:", ["None", "Palm Fracture"])
 
     if 'palm_submit' not in st.session_state:
@@ -322,14 +357,11 @@ def fracture_analysis_page():
                         and proper medical consultation is required. Keep your explanation concise and reassuring.
                         """
                         
-                        # Get simplified explanation from Gemini
-                        response = gemini_model.generate_content([
-                            prompt,
-                            {"mime_type": f"image/{image.format.lower()}", "data": img_bytes}
-                        ])
+                        # Get simplified explanation from Sarvam.ai
+                        response_text = call_sarvam(prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
                         
                         st.subheader("Simplified Explanation")
-                        st.info(response.text)
+                        st.info(response_text)
                     except Exception as e:
                         st.error(f"Error generating simplified explanation: {e}")
 
@@ -340,8 +372,7 @@ def vitiligo_analysis_page():
     st.title("Vitiligo Scan Analysis")
     st.subheader("AI-Powered Vitiligo Detection & Analysis")
     
-    # Initialize Gemini AI model for summarization
-    gemini_model = setup_gemini()
+    # No explicit model object needed; Sarvam.ai is called via HTTP wrapper
     
     # Create tabs for upload and live camera
     tab1, tab2 = st.tabs(["Upload Image", "Live Camera Analysis"])
@@ -416,14 +447,11 @@ def vitiligo_analysis_page():
                             and proper dermatological consultation is required.
                             """
                             
-                            # Get simplified explanation from Gemini
-                            response = gemini_model.generate_content([
-                                prompt,
-                                {"mime_type": f"image/{image.format.lower()}", "data": img_bytes}
-                            ])
+                            # Get simplified explanation from Sarvam.ai
+                            response_text = call_sarvam(prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
                             
                             st.subheader("Simplified Explanation")
-                            st.info(response.text)
+                            st.info(response_text)
                         except Exception as e:
                             st.error(f"Error generating simplified explanation: {e}")
                 except Exception as e:
@@ -595,14 +623,11 @@ def vitiligo_analysis_page():
                             and proper dermatological consultation is required.
                             """
                             
-                            # Get simplified explanation from Gemini
-                            response = gemini_model.generate_content([
-                                prompt,
-                                {"mime_type": "image/jpeg", "data": img_bytes}
-                            ])
+                            # Get simplified explanation from Sarvam.ai
+                            response_text = call_sarvam(prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
                             
                             st.subheader("Simplified Explanation")
-                            st.info(response.text)
+                            st.info(response_text)
                         except Exception as e:
                             st.error(f"Error generating simplified explanation: {e}")
             
@@ -613,13 +638,12 @@ def vitiligo_analysis_page():
         
         st.warning("This live analysis is for demonstration only. Please consult a dermatologist for proper diagnosis.")
 
-# --- Chatbot: Report Analyzer Page (Google Gemini AI) ---
+# --- Chatbot: Report Analyzer Page (Sarvam.ai) ---
 def chatbot_page():
     st.title("Medical Chatbot")
     st.subheader("Interact with our AI-powered Medical Assistant")
 
-    # Setup Gemini Model
-    model = setup_gemini()
+    # No explicit model object needed; Sarvam.ai is called via HTTP wrapper
 
     # If session state for conversation doesn't exist, initialize it
     if 'conversation' not in st.session_state:
@@ -641,9 +665,10 @@ def chatbot_page():
             
             with st.spinner("AI is processing your query..."):
                 try:
-                    # Generate AI response using the Google Gemini model
-                    response = model.generate_content(user_input)
-                    ai_reply = response.text
+                    # Generate AI response using Sarvam.ai with medical focus
+                    medical_prompt = f"You are a medical assistant AI. Answer this question in the context of healthcare and medicine. Provide accurate, helpful information in simple terms that a non-medical professional can understand. If this is a medical question, emphasize that this is not a substitute for professional medical advice and recommend consulting a healthcare provider. Question: {user_input}"
+                    response_text = call_sarvam(medical_prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
+                    ai_reply = response_text
                     
                     # Add AI response to conversation history
                     st.session_state.conversation.append(f"AI: {ai_reply}")
@@ -676,21 +701,28 @@ def chatbot_page():
                 
                 with st.spinner("Analyzing image..."):
                     try:
-                        # Process image with Gemini multimodal capabilities
-                        vision_model = genai.GenerativeModel('gemini-1.5-flash')
-                        response = vision_model.generate_content([
-                            "Analyze this medical image and explain the findings in simple terms that a non-medical professional would understand. Highlight any notable observations:",
-                            {"mime_type": f"image/{image.format.lower()}", "data": img_bytes}
-                        ])
+                        # Extract text from image using OCR
+                        import pytesseract
+                        from PIL import Image
+                        extracted_text = pytesseract.image_to_string(image)
+                        
+                        if not extracted_text.strip():
+                            extracted_text = "No text detected in the image."
+                        
+                        # Analyze the extracted text with Sarvam.ai
+                        prompt = f"Analyze this medical document text extracted from an image and explain the findings in simple terms that a non-medical professional would understand. Highlight any notable observations: {extracted_text}"
+                        response_text = call_sarvam(prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
                         
                         st.subheader("AI Analysis:")
-                        st.write(response.text)
+                        st.write(response_text)
                         
                         # Add a simpler summary section
                         st.subheader("Simple Summary:")
-                        summary_prompt = "Based on the above analysis, give me a 2-3 sentence summary in very simple language that anyone could understand:"
-                        summary = vision_model.generate_content(summary_prompt + response.text)
-                        st.info(summary.text)
+                        summary_prompt = f"Based on the above analysis, give me a 2-3 sentence summary of the key points in very simple language: {response_text}"
+                        summary = call_sarvam(summary_prompt, model=DEFAULT_SARVAM_TEXT_MODEL)
+                        st.info(summary)
+
+
                         
                     except Exception as e:
                         st.error(f"Error analyzing image: {e}")
@@ -727,16 +759,16 @@ def chatbot_page():
                         Present this information in a way that someone without medical training can understand:
                         """
                         
-                        response = model.generate_content(analysis_prompt + text_content)
+                        response_text = call_sarvam(analysis_prompt + text_content, model=DEFAULT_SARVAM_TEXT_MODEL)
                         
                         st.subheader("AI Analysis:")
-                        st.write(response.text)
+                        st.write(response_text)
                         
                         # Add a simpler summary section
                         st.subheader("Simple Summary:")
                         summary_prompt = "Based on the above analysis, give me a 2-3 sentence summary of the key points in very simple language:"
-                        summary = model.generate_content(summary_prompt + response.text)
-                        st.info(summary.text)
+                        summary_text = call_sarvam(summary_prompt + response_text, model=DEFAULT_SARVAM_TEXT_MODEL)
+                        st.info(summary_text)
                         
                     except Exception as e:
                         st.error(f"Error analyzing document: {e}")
